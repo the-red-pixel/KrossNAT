@@ -1,0 +1,3 @@
+Manifest-Version: 1.0
+Main-Class: org.kucro3.krossnat.auth.keygen.Main
+
