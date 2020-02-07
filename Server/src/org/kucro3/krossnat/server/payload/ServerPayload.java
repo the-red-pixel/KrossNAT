@@ -94,14 +94,6 @@ public class ServerPayload implements Payload {
                 buf.clear();
             }
 
-            if (cap < 0)
-            {
-                if (session.getInstance() != null)
-                    session.getInstance().destroy();
-
-                channel.close();
-            }
-
             try {
                 while (iter.hasNext())
                 {
@@ -133,6 +125,14 @@ public class ServerPayload implements Payload {
 
                 channel.close();
                 return;
+            }
+
+            if (cap < 0)
+            {
+                if (session.getInstance() != null)
+                    session.getInstance().destroy();
+
+                channel.close();
             }
         } catch (Exception e) {
             logger.severe("Exception occurred handling session read {" + session.getChannelID() + "}");
