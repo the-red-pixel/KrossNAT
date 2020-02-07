@@ -3,7 +3,9 @@ package org.kucro3.krossnat.client.payload;
 import com.theredpixelteam.redtea.util.Pair;
 import org.kucro3.krossnat.auth.Authorization;
 import org.kucro3.krossnat.auth.AuthorizationToken;
+import org.kucro3.krossnat.client.task.ClientPingTask;
 import org.kucro3.krossnat.payload.Payload;
+import org.kucro3.krossnat.payload.task.TaskQueue;
 import org.kucro3.krossnat.protocol.*;
 
 import java.io.IOException;
@@ -11,7 +13,6 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.logging.Logger;
 
@@ -104,6 +105,7 @@ public class ClientPayload implements Payload {
             }
         } catch (Exception e) {
             logger.severe("Exception occurred while reading packet. State: " + state);
+
             e.printStackTrace();
 
             try {
@@ -111,6 +113,10 @@ public class ClientPayload implements Payload {
             } catch (IOException e1) {
                 e1.printStackTrace();
             }
+
+            state = State.DEAD;
+
+            key.selector().wakeup();
         }
     }
 
@@ -159,6 +165,8 @@ public class ClientPayload implements Payload {
             logger.info("Auth success, connected to server.");
             token.clean();
 
+            taskQueue.queue(pingTask);
+
             state = State.ONLINE;
         }
     }
@@ -197,6 +205,10 @@ public class ClientPayload implements Payload {
             } catch (IOException e1) {
                 e1.printStackTrace();
             }
+
+            state = State.DEAD;
+
+            key.selector().wakeup();
         }
     }
 
@@ -228,7 +240,19 @@ public class ClientPayload implements Payload {
             case UNIVERSAL_DATA:
                 handleReadOnlineData(key, (PacketUniversalData) packet);
                 break;
+
+            case UNIVERSAL_PING:
+                handleReadOnlinePing(key, (PacketUniversalPing) packet);
+                break;
         }
+    }
+
+    private void handleReadOnlinePing(SelectionKey key, PacketUniversalPing packet)
+    {
+        long stamp = packet.getStamp();
+
+        pingTask.setStamp(stamp);
+        pingTask.ping();
     }
 
     private void handleReadOnlineConnectionClosed(SelectionKey key, PacketConnectionClosed packet)
@@ -285,7 +309,7 @@ public class ClientPayload implements Payload {
     {
         if (!waitingPortAllocationResult)
         {
-            logger.warning("Unspecified port allocation received from server. Ignored");
+            logger.warning("Unspecified port allocation result received from server. Ignored");
             return;
         }
 
@@ -390,6 +414,16 @@ public class ClientPayload implements Payload {
         return portAllocationResult;
     }
 
+    @Override
+    public TaskQueue getTaskQueue()
+    {
+        return taskQueue;
+    }
+
+    private final ClientPingTask pingTask = new ClientPingTask(this);
+
+    private final TaskQueue taskQueue = new TaskQueue();
+
     private volatile boolean portAllocationResult = false;
 
     private volatile boolean waitingPortAllocationResult = false;
@@ -423,5 +457,7 @@ public class ClientPayload implements Payload {
         WAITING_BKEY_AUTH_RESULT,
         ONLINE,
         BKEY_AUTH_FAILURE,
+        TIMED_OUT,
+        DEAD;
     }
 }

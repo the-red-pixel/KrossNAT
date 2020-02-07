@@ -56,9 +56,6 @@ public class Main {
             clientThread.start();
             clientLogger.info("Client thread started.");
 
-            instanceThread.start();
-            clientLogger.info("Instance thread started.");
-
             ClientPayload payload = clientThread.getPayload();
 
             clientLogger.info("Waiting on state.");
@@ -69,16 +66,17 @@ public class Main {
                     && payload.getState() != ClientPayload.State.AKEY_AUTH_FAILURE
                     && payload.getState() != ClientPayload.State.BKEY_AUTH_FAILURE);
 
-            clientLogger.info("State has been ONLINE. Starting port allocation.");
-
             if (payload.getState() == ClientPayload.State.ONLINE)
             {
+                instanceThread.start();
+                clientLogger.info("Instance thread started.");
+
+                clientLogger.info("State has been set to ONLINE. Starting port allocation.");
+
                 PortConfiguration.load(portTable);
 
                 for (Integer port : portTable.getPorts())
-                {
                     payload.pushPortRequest(port);
-                }
             }
         } catch (Exception e) {
             clientLogger.severe("Failed to boot, exception occurred.");

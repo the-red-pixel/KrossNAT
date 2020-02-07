@@ -2,18 +2,16 @@ package org.kucro3.krossnat.client.payload;
 
 import com.theredpixelteam.redtea.util.Pair;
 import org.kucro3.krossnat.payload.PayloadProcess;
-import org.kucro3.krossnat.protocol.PacketQueue;
 
 import java.io.IOException;
 import java.nio.channels.*;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.logging.Logger;
 
 public class InstanceThread extends Thread {
     public InstanceThread(Logger logger, ClientPayload payload, ConnectionTable connectionTable) throws IOException
     {
+        super("ClientInstanceThread");
         this.payload = new InstancePayload(logger, payload, connectionTable);
         this.logger = logger;
         this.selector = Selector.open();
@@ -47,7 +45,7 @@ public class InstanceThread extends Thread {
 
     private void payload() throws Exception
     {
-        while (!interrupted)
+        while (!interrupted && payload.getPayload().getState().equals(ClientPayload.State.ONLINE))
             PayloadProcess.process(selector, payload);
     }
 

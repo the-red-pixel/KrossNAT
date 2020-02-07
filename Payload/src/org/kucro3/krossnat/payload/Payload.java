@@ -1,5 +1,7 @@
 package org.kucro3.krossnat.payload;
 
+import org.kucro3.krossnat.payload.task.TaskQueue;
+
 import java.nio.channels.SelectionKey;
 
 public interface Payload {
@@ -13,5 +15,10 @@ public interface Payload {
 
     public void tick();
 
-    public default void tickOnKey(SelectionKey key) {};
+    public default void tickOnKey(SelectionKey key) {}
+
+    public default TaskQueue getTaskQueue()
+    {
+        return null;
+    }
 }

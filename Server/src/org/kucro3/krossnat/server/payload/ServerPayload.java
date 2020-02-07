@@ -7,20 +7,24 @@ import org.kucro3.krossnat.auth.Authorization;
 import org.kucro3.krossnat.auth.AuthorizationToken;
 import org.kucro3.krossnat.auth.AuthorizationTokenPool;
 import org.kucro3.krossnat.payload.Payload;
+import org.kucro3.krossnat.payload.task.TaskQueue;
 import org.kucro3.krossnat.protocol.*;
 import org.kucro3.krossnat.server.Connection;
 import org.kucro3.krossnat.server.ConnectionTable;
 import org.kucro3.krossnat.server.Instance;
 import org.kucro3.krossnat.server.InstanceTable;
+import org.kucro3.krossnat.server.task.ServerPingTask;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.net.SocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedDeque;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 @SuppressWarnings("all")
@@ -167,7 +171,26 @@ public class ServerPayload implements Payload {
             case UNIVERSAL_DATA:
                 handleReadOnlineData(key, session, (PacketUniversalData) packet);
                 break;
+
+            case UNIVERSAL_PING:
+                handleReadOnlinePing(key, session, (PacketUniversalPing) packet);
+                break;
         }
+    }
+
+    private void handleReadOnlinePing(SelectionKey key, PayloadSession session, PacketUniversalPing packet)
+    {
+        ServerPingTask pingTask = session.getPingTask();
+
+        if (pingTask.getSentPacket() == null)
+            return; // ignored
+
+        long stamp = packet.getStamp();
+
+        if (stamp != pingTask.getSentPacket().getStamp())
+            session.setState(State.ECHO_CORRUPTION);
+        else
+            pingTask.echo();
     }
 
     private void handleReadOnlineConnectionClosed(SelectionKey key, PayloadSession session, PacketConnectionClosed packet)
@@ -194,19 +217,27 @@ public class ServerPayload implements Payload {
 
         int port = packet.getPort();
 
-        if (!instance.allocatePort(port))
-        {
-            logger.warning("Port " + port + " in use or exception occurred. Allocation request from {" + session.getChannelID() + "} aborted.");
+        try {
+            if (!instance.allocatePort(port))
+            {
+                logger.warning("Port " + port + " in use or exception occurred. Allocation request from {" + session.getChannelID() + "} aborted.");
+
+                queue.pushPacket(
+                        ByteBuffer.wrap(new Packet2ClientPortAllocationResult(false).toBytes()));
+            }
+            else
+            {
+                logger.info("Port " + port + " allocated to instance {" + session.getChannelID() + "}");
+
+                queue.pushPacket(
+                        ByteBuffer.wrap(new Packet2ClientPortAllocationResult(true).toBytes()));
+            }
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Exception occurred allocation port. Allocation require from {" + session.getChannelID() + "} aborted.");
+            e.printStackTrace();
 
             queue.pushPacket(
                     ByteBuffer.wrap(new Packet2ClientPortAllocationResult(false).toBytes()));
-        }
-        else
-        {
-            logger.info("Port " + port + " allocated to instance {" + session.getChannelID() + "}");
-
-            queue.pushPacket(
-                    ByteBuffer.wrap(new Packet2ClientPortAllocationResult(true).toBytes()));
         }
     }
 
@@ -317,8 +348,22 @@ public class ServerPayload implements Payload {
                 channel.write(queue.topPacket().getSilently());
             else
                 switch (session.getState()) {
+                    case ECHO_CORRUPTION:
+                        logger.severe("Session {" + session.getChannelID() + "} echo malformation.");
+
+                        session.getInstance().destroy();
+                        channel.close();
+                        break;
+
+                    case TIMED_OUT:
+                        logger.severe("Session {" + session.getChannelID() + "} timed out.");
+
+                        session.getInstance().destroy();
+                        channel.close();
+                        break;
+
                     case DEAD:
-                        key.channel().close();
+                        channel.close();
                         break;
 
                     case AKEY_ABORTED:
@@ -400,6 +445,8 @@ public class ServerPayload implements Payload {
 
         session.setInstance(new Instance(instanceTable, session));
 
+        taskQueue.queue(session.getPingTask());
+
         logger.info("Authorization verified for connection {" + session.getChannelID() + "}.");
 
         session.setState(State.ONLINE);
@@ -421,6 +468,14 @@ public class ServerPayload implements Payload {
                 + "Receiving " + received + ", expecting " + expected);
     }
 
+    @Override
+    public TaskQueue getTaskQueue()
+    {
+        return taskQueue;
+    }
+
+    private final TaskQueue taskQueue = new TaskQueue();
+
     private final ConcurrentLinkedDeque<Pair<Packet, SelectionKey>> receivedPackets = new ConcurrentLinkedDeque<>();
 
     private final InstanceTable instanceTable;
@@ -433,13 +488,27 @@ public class ServerPayload implements Payload {
 
     public static enum State
     {
-        WAITING_AKEY,
-        AKEY_ABORTED,
-        AKEY_ACCEPTED,
-        VERIFYING_BKEY,
-        ACCEPTED,
-        ABORTED,
-        ONLINE,
-        DEAD
+        WAITING_AKEY    (true),
+        AKEY_ABORTED    (false),
+        AKEY_ACCEPTED   (true),
+        VERIFYING_BKEY  (false),
+        ACCEPTED        (true),
+        ABORTED         (false),
+        ONLINE          (true),
+        DEAD            (false),
+        TIMED_OUT       (false),
+        ECHO_CORRUPTION (false);
+
+        private State(boolean alive)
+        {
+            this.alive = alive;
+        }
+
+        public boolean isAlive()
+        {
+            return alive;
+        }
+
+        private final boolean alive;
     }
 }

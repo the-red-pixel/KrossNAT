@@ -1,5 +1,7 @@
 package org.kucro3.krossnat.payload;
 
+import org.kucro3.krossnat.payload.task.TaskDispatcher;
+
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.util.Iterator;
@@ -13,7 +15,10 @@ public class PayloadProcess {
     {
         payload.tick();
 
-        if (selector.select() == 0)
+        if (payload.getTaskQueue() != null)
+            TaskDispatcher.dispath(payload.getTaskQueue());
+
+        if (selector.select(500) == 0)
             return;
 
         Iterator<SelectionKey> iter = selector.selectedKeys().iterator();

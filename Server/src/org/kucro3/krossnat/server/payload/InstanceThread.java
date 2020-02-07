@@ -82,9 +82,10 @@ public class InstanceThread extends Thread {
             return true;
         } catch (Exception e) {
             logger.severe("Exception occurred when allocating instance socket on port " + port + ".");
-        }
+            e.printStackTrace();
 
-        return false;
+            return false;
+        }
     }
 
     public boolean freePort(int port)

@@ -5,6 +5,7 @@ import org.kucro3.krossnat.auth.AuthorizationToken;
 import org.kucro3.krossnat.protocol.PacketIterator;
 import org.kucro3.krossnat.protocol.PacketQueue;
 import org.kucro3.krossnat.server.Instance;
+import org.kucro3.krossnat.server.task.ServerPingTask;
 
 import java.util.UUID;
 
@@ -70,6 +71,11 @@ public class PayloadSession {
         this.instance = instance;
     }
 
+    public ServerPingTask getPingTask()
+    {
+        return serverPingTask;
+    }
+
     private Instance instance;
 
     private AuthorizaionSession session;
@@ -83,4 +89,6 @@ public class PayloadSession {
     private final UUID id;
 
     private volatile ServerPayload.State state;
+
+    private final ServerPingTask serverPingTask = new ServerPingTask(this);
 }
